@@ -18,8 +18,8 @@ def fetch_acousticbrainz_data(mbid, high_quality=True):
         print(f"Error fetching data for {mbid}: {e}")
         return None  # Return None on error
 
+#Collects song MBIDs by genre and fetches their AcousticBrainz data.
 def song_collection(genres, max_songs_per_genre=100, pause_duration=1):
-    """Collects song MBIDs by genre and fetches their AcousticBrainz data."""
     genre_song_ids = {genre: [] for genre in genres}
     high_level_data = {}
     low_level_data = {}
@@ -85,7 +85,7 @@ def song_collection(genres, max_songs_per_genre=100, pause_duration=1):
     print("Data collection and saving complete.")
     return genre_song_ids
 
-# Set up your user agent for MusicBrainz API
+# Set up user agent for MusicBrainz API
 mb.set_useragent("Project-Playlist", "1.0", "connorxspears@gmail.com")
 
 # Load the generalized genres list from a JSON file

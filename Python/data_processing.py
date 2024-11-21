@@ -2,6 +2,7 @@ import musicbrainzngs
 from sklearn.preprocessing import OneHotEncoder
 import numpy as np
 import json
+import joblib
 
 # Set up your user agent for MusicBrainz API
 musicbrainzngs.set_useragent("Project-Playlist", "1.0", "connorxspears@gmail.com")
@@ -56,12 +57,19 @@ def parseData():
             # Normalize and gather continuous features
             continuous_features = np.array([
                 normalize(lowlevel_data["rhythm"].get("bpm"), 40, 200),
+                normalize(lowlevel_data["lowlevel"].get("dynamic_complexity"), 0, 5),
+                normalize(lowlevel_data["lowlevel"].get("spectral_centroid").get('mean'), 1000, 3000),
+                normalize(lowlevel_data["lowlevel"].get("spectral_rolloff").get('mean'), 1000, 3000),
+                lowlevel_data["lowlevel"].get("spectral_flux").get('mean'),
                 lowlevel_data["lowlevel"].get("average_loudness"),
                 highlevel_data['highlevel'].get('mood_aggressive').get('all').get('aggressive'),
                 highlevel_data['highlevel'].get('mood_acoustic').get('all').get('acoustic'),
                 highlevel_data["highlevel"].get('danceability').get('all').get('danceable'),
-                highlevel_data["highlevel"].get('timbre').get('all').get('bright')
-            ]).reshape(1, -1)
+                highlevel_data["highlevel"].get('timbre').get('all').get('bright'),
+                highlevel_data["highlevel"].get("voice_instrumental").get("all").get("instrumental"),
+                highlevel_data["highlevel"].get("tonal_atonal").get("all").get("atonal"),
+                highlevel_data["highlevel"].get("gender").get("all").get("female")
+            ])
             continuous_features = continuous_features.flatten()
             
             try:
@@ -88,5 +96,7 @@ def parseData():
     np.save("all_song_labels.npy", all_song_labels_encoded)
     
     print(f"Filtered data saved to all_songs_data.npy and all_song_labels.npy")
+    joblib.dump(encoder_key_key, "encoder_key_key.pkl")
+    joblib.dump(encoder_key_scale, "encoder_key_scale.pkl")
 
 parseData()
