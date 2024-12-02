@@ -1,11 +1,13 @@
 from flask import Flask, request, json
 from startingNN import GenreNN
+from sklearn.preprocessing import MinMaxScaler
 import torch
 import musicbrainzngs as mb
 import requests
 import numpy as np
-import joblib
+import pandas as pd
 import os
+import joblib
 
 app = Flask(__name__)
 
@@ -44,7 +46,7 @@ def getMBID(title, artist):
                 if low_level_data:
                     print(f"Successfully fetched AcousticBrainz data for MBID {mbid}")
                     print(f"Artist:", recording['artist-credit'][0]['artist']['name'], "Song:", recording['title'])
-                    parsed_data = parse_data(high_level_data, low_level_data)
+                    parsed_data = parse_data(high_level_data, low_level_data, recording)
                     return parsed_data
                 else:
                     print(f"Song ID: {mbid} had high level data but not low level")
@@ -68,38 +70,133 @@ def fetch_acousticbrainz_data(mbid, high_quality):
         print(f"Error fetching AcousticBrainz {quality} data: {e}")
         return None
 
-def parse_data(high_level_data, low_level_data):
-    encoder_key_key = joblib.load("encoder_key_key.pkl")
-    encoder_key_scale = joblib.load("encoder_key_scale.pkl")
-    
-    # Encode the categorical features with the fitted encoder
-    categorical_features = np.concatenate([
-        encoder_key_key.transform([[low_level_data["tonal"].get("key_key")]])[0],
-        encoder_key_scale.transform([[low_level_data["tonal"].get("key_scale")]])[0]
-    ])
-    
-    # Normalize and gather continuous features
-    continuous_features = np.array([
-        normalize(low_level_data["rhythm"].get("bpm"), 40, 200),
-        low_level_data["lowlevel"].get("average_loudness"),
-        high_level_data['highlevel'].get('mood_aggressive').get('all').get('aggressive'),
-        high_level_data['highlevel'].get('mood_acoustic').get('all').get('acoustic'),
-        high_level_data["highlevel"].get('danceability').get('all').get('danceable'),
-        high_level_data["highlevel"].get('timbre').get('all').get('bright')
-    ]).reshape(1, -1)
-    continuous_features = continuous_features.flatten()
+def parse_data(highlevel_data, lowlevel_data, recording):
+    features_list = []
+    song_id = recording['id']
 
-    try:
-        input_features = np.concatenate([categorical_features, continuous_features])
-        return input_features
-    except ValueError as e:
-        print(f"Error concatenating: {e}")
-        print(f"Categorical shape: {categorical_features.shape}")
-        print(f"Continuous shape: {continuous_features.shape}")
-        return None
+    flat_entry = {"mbid": song_id, "genre": None}
+    if highlevel_data:
+        high_level_features = {
+            # Danceability and Timbre
+            "danceable": highlevel_data["highlevel"].get('danceability').get('all').get('danceable'),  # Danceability feature
+            "bright_timbre": highlevel_data["highlevel"].get('timbre').get('all').get('bright'),  # Timbre: Brightness
+            "instrumental": highlevel_data["highlevel"].get("voice_instrumental").get("all").get("instrumental"),  # Instrumental voice
+            "atonal": highlevel_data["highlevel"].get("tonal_atonal").get("all").get("atonal"),  # Tonal vs Atonal
+            "female_gender": highlevel_data["highlevel"].get("gender").get("all").get("female"),  # Gender (Female)
 
-def normalize(value, min_val, max_val):
-    return(value - min_val) / (max_val - min_val) if value is not None else 0.5
+            # Genre Dortmund features
+            "alternative_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("alternative"),  # Genre Dortmund: Alternative
+            "blues_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("blues"),  # Genre Dortmund: Blues
+            "electronic_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("electronic"),  # Genre Dortmund: Electronic
+            "folkcountry_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("folkcountry"),  # Genre Dortmund: Folk/Country
+            "funksoulrnb_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("funksoulrnb"),  # Genre Dortmund: Funk/Soul/RnB
+            "jazz_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("jazz"),  # Genre Dortmund: Jazz
+            "pop_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("pop"),  # Genre Dortmund: Pop
+            "raphiphop_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("raphiphop"),  # Genre Dortmund: Rap/HipHop
+            "rock_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("rock"),  # Genre Dortmund: Rock
+
+            # Genre Electronic features
+            "ambient_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("ambient"),  # Genre Electronic: Ambient
+            "dnb_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("dnb"),  # Genre Electronic: DnB
+            "house_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("house"),  # Genre Electronic: House
+            "techno_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("techno"),  # Genre Electronic: Techno
+            "trance_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("trance"),  # Genre Electronic: Trance
+
+            # Genre Rosamerica features
+            "cla_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("cla"),  # Genre Rosamerica: Classical
+            "dan_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("dan"),  # Genre Rosamerica: Dance
+            "hip_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("hip"),  # Genre Rosamerica: Hip Hop
+            "jaz_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("jaz"),  # Genre Rosamerica: Jazz
+            "pop_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("pop"),  # Genre Rosamerica: Pop
+            "rhy_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("rhy"),  # Genre Rosamerica: Rhythm
+            "roc_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("roc"),  # Genre Rosamerica: Rock
+            "spe_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("spe"),  # Genre Rosamerica: Special
+
+            # Genre Tzanetakis features
+            "blu_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("blu"),  # Genre Tzanetakis: Blues
+            "cla_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("cla"),  # Genre Tzanetakis: Classical
+            "cou_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("cou"),  # Genre Tzanetakis: Country
+            "dis_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("dis"),  # Genre Tzanetakis: Disco
+            "hip_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("hip"),  # Genre Tzanetakis: Hip Hop
+            "jaz_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("jaz"),  # Genre Tzanetakis: Jazz
+            "met_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("met"),  # Genre Tzanetakis: Metal
+            "pop_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("pop"),  # Genre Tzanetakis: Pop
+            "reg_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("reg"),  # Genre Tzanetakis: Reggae
+            "roc_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("roc"),  # Genre Tzanetakis: Rock
+
+            # ISMIR04 Rhythm features
+            "chachacha_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("ChaChaCha"),  # ISMIR04: ChaChaCha
+            "jive_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Jive"),  # ISMIR04: Jive
+            "quickstep_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Quickstep"),  # ISMIR04: Quickstep
+            "rumba_american_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-American"),  # ISMIR04: Rumba-American
+            "rumba_international_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-International"),  # ISMIR04: Rumba-International
+            "rumba_misc_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-Misc"),  # ISMIR04: Rumba-Misc
+            "samba_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Samba"),  # ISMIR04: Samba
+            "tango_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Tango"),  # ISMIR04: Tango
+            "viennese_waltz_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("VienneseWaltz"),  # ISMIR04: Viennese Waltz
+            "waltz_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Waltz"),  # ISMIR04: Waltz
+
+            # Mood features
+            "acoustic_mood": highlevel_data['highlevel'].get('mood_acoustic').get('all').get('acoustic'),  # Mood: Acoustic
+            "aggressive_mood": highlevel_data['highlevel'].get('mood_aggressive').get('all').get('aggressive'),  # Mood: Aggressive
+            "electronic_mood": highlevel_data['highlevel'].get('mood_electronic').get('all').get('electronic'),  # Mood: Electronic
+            "happy_mood": highlevel_data['highlevel'].get('mood_happy').get('all').get('happy'),  # Mood: Happy
+            "party_mood": highlevel_data['highlevel'].get('mood_party').get('all').get('party'),  # Mood: Party
+            "relaxed_mood": highlevel_data['highlevel'].get('mood_relaxed').get('all').get('relaxed'),  # Mood: Relaxed
+            "sad_mood": highlevel_data['highlevel'].get('mood_sad').get('all').get('sad'),  # Mood: Sad
+
+            # Mood Mirex features
+            "cluster1_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster1'),  # Mood Mirex: Cluster 1
+            "cluster2_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster2'),  # Mood Mirex: Cluster 2
+            "cluster3_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster3'),  # Mood Mirex: Cluster 3
+            "cluster4_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster4'),  # Mood Mirex: Cluster 4
+            "cluster5_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster5')  # Mood Mirex: Cluster 5
+        }
+        flat_entry.update(high_level_features)
+    if lowlevel_data:
+        lowlevel_data = lowlevel_data["lowlevel"]
+        for key, value in lowlevel_data.items():
+            if isinstance(value, dict):
+                for subkey, subvalue in value.items():
+                    flat_entry[f"{key}_{subkey}"] = subvalue
+            else:
+                flat_entry[key] = value
+    
+    features_list.append(flat_entry)
+
+    df = pd.DataFrame(features_list)
+
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+
+    # Apply scaling
+    scaler = joblib.load('scaler.pkl')
+    training_features = joblib.load('features.pkl')
+
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
+    
+    for feature in training_features:
+        if feature not in df.columns:
+            df[feature] = 0
+    
+    df = df[training_features]
+    df[numeric_cols] = df[numeric_cols].fillna(0)
+    df[numeric_cols] = scaler.transform(df[numeric_cols])
+    print(df.dtypes)
+    return df
+
+def flatten_array_columns(df, length=10):
+    for column in df.columns:
+        if isinstance(df[column].iloc[0], (list, np.ndarray)):
+            # Flatten each array to have 'length' number of elements (or pad with NaN)
+            df[column] = df[column].apply(lambda x: x[:length] if isinstance(x, (list, np.ndarray)) else x)
+            
+            # If the array is shorter than the specified length, pad with NaN (or zeros if preferred)
+            df[column] = df[column].apply(lambda x: x + [np.nan] * (length - len(x)) if len(x) < length else x)
+
+            # Ensure the column is now a list of numbers with fixed length
+            df[column] = df[column].apply(lambda x: np.array(x))
+    
+    return df
 
 # Set up user agent for MusicBrainz API
 mb.set_useragent("Project-Playlist", "1.0", "connorxspears@gmail.com")
@@ -108,7 +205,15 @@ songName = input("Enter the song name:")
 songArtist = input(f"Enter the artist for {songName}:")
 
 songData = getMBID(songName, songArtist)
-model = GenreNN(20, 64, 50) # 20 inputs for 12 musical keys + 2 scales + 8 continuous features
+songData = flatten_array_columns(songData)
+songData = songData.apply(pd.to_numeric, errors="coerce")
+songData.fillna(0, inplace=True)
+
+songFeatures = songData.drop(columns=['mbid', 'genre'])
+songFeatures = songFeatures.to_numpy()
+
+
+model = GenreNN(454, 64, 50)
 model.load_state_dict(torch.load('GenreClassifier.pth'))
 model.eval()
 
@@ -118,9 +223,9 @@ with open(json_file_path, 'r') as genre_json:
 genre_names = [genre["name"] for genre in genres["genres"]]
 
 with torch.no_grad():
-    songData = torch.tensor(songData, dtype=torch.float32)
-    songData = songData.unsqueeze(0)
-    output = model(songData)
+    songTensor = torch.tensor(songFeatures, dtype=torch.float32)
+    songTensor = songTensor.unsqueeze(0)
+    output = model(songTensor)
     probabilities = torch.nn.functional.softmax(output, dim=1)
     print("Probabilities:", probabilities)
     top3_indices = torch.topk(probabilities, 3).indices.squeeze().tolist()

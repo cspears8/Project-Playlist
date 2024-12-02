@@ -1,102 +1,145 @@
 import musicbrainzngs
-from sklearn.preprocessing import OneHotEncoder
-import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 import json
-import joblib
+import pandas as pd
 
 # Set up your user agent for MusicBrainz API
 musicbrainzngs.set_useragent("Project-Playlist", "1.0", "connorxspears@gmail.com")
 
-def normalize(value, min_val, max_val):
-    return(value - min_val) / (max_val - min_val) if value is not None else 0.5
-
-def parseData():
-    encoder = OneHotEncoder(sparse_output=False)
-    
+def parseData(): 
     # Load data
-    with open('low_level_data.json', 'r') as low_level:
-        lowData = json.load(low_level)
     with open('high_level_data.json', 'r') as high_level:
         highData = json.load(high_level)
 
-    all_song_features = []
-    all_song_labels = []
-
-    # Collect all possible values of key_key and key_scale for one-hot encoding
-    key_key_values = []
-    key_scale_values = []
-
-    for genre, songs in lowData.items():
-        for song in songs:
-            lowlevel_data = song["data"]
-
-            # Collect all values for key_key and key_scale
-            key_key_values.append(lowlevel_data["tonal"].get("key_key"))
-            key_scale_values.append(lowlevel_data["tonal"].get("key_scale"))
-
-    # Fit the encoder once
-    encoder_key_key = OneHotEncoder(sparse_output=False)
-    encoder_key_scale = OneHotEncoder(sparse_output=False)
-
-    # Fit the encoder on all the categorical values
-    encoder_key_key.fit(np.array(key_key_values).reshape(-1, 1))
-    encoder_key_scale.fit(np.array(key_scale_values).reshape(-1, 1))
+    highlevel_features_list = []
 
     # Now process the songs
-    for genre, songs in lowData.items():
+    for genre, songs in highData.items():
         for song in songs:
-            lowlevel_data = song["data"]
+            song_id = song.get("mbid", None)
             highlevel_data = next((item["data"] for item in highData.get(genre, []) if item["mbid"] == song["mbid"]), {})
 
-            # Encode the categorical features with the fitted encoder
-            categorical_features = np.concatenate([
-                encoder_key_key.transform([[lowlevel_data["tonal"].get("key_key")]])[0],
-                encoder_key_scale.transform([[lowlevel_data["tonal"].get("key_scale")]])[0]
-            ])
+            flat_entry = {"mbid": song_id, "genre": genre}
 
-            # Normalize and gather continuous features
-            continuous_features = np.array([
-                normalize(lowlevel_data["rhythm"].get("bpm"), 40, 200),
-                normalize(lowlevel_data["lowlevel"].get("dynamic_complexity"), 0, 5),
-                normalize(lowlevel_data["lowlevel"].get("spectral_centroid").get('mean'), 1000, 3000),
-                normalize(lowlevel_data["lowlevel"].get("spectral_rolloff").get('mean'), 1000, 3000),
-                lowlevel_data["lowlevel"].get("spectral_flux").get('mean'),
-                lowlevel_data["lowlevel"].get("average_loudness"),
-                highlevel_data['highlevel'].get('mood_aggressive').get('all').get('aggressive'),
-                highlevel_data['highlevel'].get('mood_acoustic').get('all').get('acoustic'),
-                highlevel_data["highlevel"].get('danceability').get('all').get('danceable'),
-                highlevel_data["highlevel"].get('timbre').get('all').get('bright'),
-                highlevel_data["highlevel"].get("voice_instrumental").get("all").get("instrumental"),
-                highlevel_data["highlevel"].get("tonal_atonal").get("all").get("atonal"),
-                highlevel_data["highlevel"].get("gender").get("all").get("female")
-            ])
-            continuous_features = continuous_features.flatten()
-            
-            try:
-                input_features = np.concatenate([categorical_features, continuous_features])
-                all_song_features.append(input_features)
-            except ValueError as e:
-                print(f"Error concatenating: {e}")
-                print(f"Categorical shape: {categorical_features.shape}")
-                print(f"Continuous shape: {continuous_features.shape}")
+            if highlevel_data:
+                high_level_features = {
+                    # Danceability and Timbre
+                    "danceable": highlevel_data["highlevel"].get('danceability').get('all').get('danceable'),  # Danceability feature
+                    "bright_timbre": highlevel_data["highlevel"].get('timbre').get('all').get('bright'),  # Timbre: Brightness
+                    "instrumental": highlevel_data["highlevel"].get("voice_instrumental").get("all").get("instrumental"),  # Instrumental voice
+                    "atonal": highlevel_data["highlevel"].get("tonal_atonal").get("all").get("atonal"),  # Tonal vs Atonal
+                    "female_gender": highlevel_data["highlevel"].get("gender").get("all").get("female"),  # Gender (Female)
 
-            all_song_labels.append(genre)
+                    # Genre Dortmund features
+                    "alternative_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("alternative"),  # Genre Dortmund: Alternative
+                    "blues_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("blues"),  # Genre Dortmund: Blues
+                    "electronic_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("electronic"),  # Genre Dortmund: Electronic
+                    "folkcountry_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("folkcountry"),  # Genre Dortmund: Folk/Country
+                    "funksoulrnb_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("funksoulrnb"),  # Genre Dortmund: Funk/Soul/RnB
+                    "jazz_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("jazz"),  # Genre Dortmund: Jazz
+                    "pop_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("pop"),  # Genre Dortmund: Pop
+                    "raphiphop_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("raphiphop"),  # Genre Dortmund: Rap/HipHop
+                    "rock_dortmund": highlevel_data["highlevel"].get("genre_dortmund").get("all").get("rock"),  # Genre Dortmund: Rock
 
-        print(f"Genre {genre} complete!")
+                    # Genre Electronic features
+                    "ambient_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("ambient"),  # Genre Electronic: Ambient
+                    "dnb_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("dnb"),  # Genre Electronic: DnB
+                    "house_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("house"),  # Genre Electronic: House
+                    "techno_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("techno"),  # Genre Electronic: Techno
+                    "trance_electronic": highlevel_data["highlevel"].get("genre_electronic").get("all").get("trance"),  # Genre Electronic: Trance
 
-    # Convert to numpy arrays
-    all_song_features_array = np.array(all_song_features)
-    all_song_labels_array = np.array(all_song_labels)
+                    # Genre Rosamerica features
+                    "cla_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("cla"),  # Genre Rosamerica: Classical
+                    "dan_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("dan"),  # Genre Rosamerica: Dance
+                    "hip_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("hip"),  # Genre Rosamerica: Hip Hop
+                    "jaz_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("jaz"),  # Genre Rosamerica: Jazz
+                    "pop_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("pop"),  # Genre Rosamerica: Pop
+                    "rhy_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("rhy"),  # Genre Rosamerica: Rhythm
+                    "roc_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("roc"),  # Genre Rosamerica: Rock
+                    "spe_rosamerica": highlevel_data["highlevel"].get("genre_rosamerica").get("all").get("spe"),  # Genre Rosamerica: Special
 
-    # Encode labels (genres)
-    genre_encoder = OneHotEncoder(sparse_output=False)
-    all_song_labels_encoded = genre_encoder.fit_transform(all_song_labels_array.reshape(-1, 1))
+                    # Genre Tzanetakis features
+                    "blu_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("blu"),  # Genre Tzanetakis: Blues
+                    "cla_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("cla"),  # Genre Tzanetakis: Classical
+                    "cou_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("cou"),  # Genre Tzanetakis: Country
+                    "dis_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("dis"),  # Genre Tzanetakis: Disco
+                    "hip_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("hip"),  # Genre Tzanetakis: Hip Hop
+                    "jaz_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("jaz"),  # Genre Tzanetakis: Jazz
+                    "met_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("met"),  # Genre Tzanetakis: Metal
+                    "pop_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("pop"),  # Genre Tzanetakis: Pop
+                    "reg_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("reg"),  # Genre Tzanetakis: Reggae
+                    "roc_tzanetakis": highlevel_data["highlevel"].get("genre_tzanetakis").get("all").get("roc"),  # Genre Tzanetakis: Rock
 
-    np.save("all_songs_data.npy", all_song_features_array)
-    np.save("all_song_labels.npy", all_song_labels_encoded)
+                    # ISMIR04 Rhythm features
+                    "chachacha_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("ChaChaCha"),  # ISMIR04: ChaChaCha
+                    "jive_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Jive"),  # ISMIR04: Jive
+                    "quickstep_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Quickstep"),  # ISMIR04: Quickstep
+                    "rumba_american_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-American"),  # ISMIR04: Rumba-American
+                    "rumba_international_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-International"),  # ISMIR04: Rumba-International
+                    "rumba_misc_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Rumba-Misc"),  # ISMIR04: Rumba-Misc
+                    "samba_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Samba"),  # ISMIR04: Samba
+                    "tango_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Tango"),  # ISMIR04: Tango
+                    "viennese_waltz_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("VienneseWaltz"),  # ISMIR04: Viennese Waltz
+                    "waltz_ismir04": highlevel_data["highlevel"].get("ismir04_rhythm").get("all").get("Waltz"),  # ISMIR04: Waltz
+
+                    # Mood features
+                    "acoustic_mood": highlevel_data['highlevel'].get('mood_acoustic').get('all').get('acoustic'),  # Mood: Acoustic
+                    "aggressive_mood": highlevel_data['highlevel'].get('mood_aggressive').get('all').get('aggressive'),  # Mood: Aggressive
+                    "electronic_mood": highlevel_data['highlevel'].get('mood_electronic').get('all').get('electronic'),  # Mood: Electronic
+                    "happy_mood": highlevel_data['highlevel'].get('mood_happy').get('all').get('happy'),  # Mood: Happy
+                    "party_mood": highlevel_data['highlevel'].get('mood_party').get('all').get('party'),  # Mood: Party
+                    "relaxed_mood": highlevel_data['highlevel'].get('mood_relaxed').get('all').get('relaxed'),  # Mood: Relaxed
+                    "sad_mood": highlevel_data['highlevel'].get('mood_sad').get('all').get('sad'),  # Mood: Sad
+
+                    # Mood Mirex features
+                    "cluster1_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster1'),  # Mood Mirex: Cluster 1
+                    "cluster2_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster2'),  # Mood Mirex: Cluster 2
+                    "cluster3_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster3'),  # Mood Mirex: Cluster 3
+                    "cluster4_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster4'),  # Mood Mirex: Cluster 4
+                    "cluster5_mirex": highlevel_data['highlevel'].get('moods_mirex').get('all').get('Cluster5')  # Mood Mirex: Cluster 5
+                }
+                flat_entry.update(high_level_features)
+                highlevel_features_list.append(flat_entry)
     
-    print(f"Filtered data saved to all_songs_data.npy and all_song_labels.npy")
-    joblib.dump(encoder_key_key, "encoder_key_key.pkl")
-    joblib.dump(encoder_key_scale, "encoder_key_scale.pkl")
+    highlevel_df = pd.DataFrame(highlevel_features_list)
+    return highlevel_df
 
-parseData()
+def flattenLowData():
+    with open('low_level_data.json', 'r') as low_level:
+        lowData = json.load(low_level)
+
+    flatLowData = []
+
+    for genre, songs in lowData.items():
+        for song in songs:
+            song_id = song.get("mbid", None)
+            lowlevel_data = song.get("data", {}).get("lowlevel", {})
+
+            flat_entry = {"mbid": song_id, "genre": genre}
+            for key, value in lowlevel_data.items():
+                if isinstance(value, dict):
+                    for subkey, subvalue in value.items():
+                        flat_entry[f"{key}_{subkey}"] = subvalue
+                else:
+                    flat_entry[key] = value
+            
+            flatLowData.append(flat_entry)
+    df = pd.DataFrame(flatLowData)
+    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+    scaler = MinMaxScaler()
+    df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
+    
+    return df
+
+lowlevel_df = flattenLowData()
+highlevel_df = parseData()
+
+print(lowlevel_df.columns)
+print(highlevel_df.columns)
+
+combined_df = pd.merge(lowlevel_df, highlevel_df, on=["mbid", "genre"], how="inner")
+
+output_path = "combined_data.csv"
+combined_df.to_csv(output_path, index=False)
+print(f"Data combined and saved as {output_path}")
+print(combined_df.head())
