@@ -206,26 +206,28 @@ songArtist = input(f"Enter the artist for {songName}:")
 songData = getMBID(songName, songArtist)
 print("songData before flatten_array_columns:", songData)
 
-
 model = GenreNN(454, 512, 50)
 model.load_state_dict(torch.load('GenreClassifier.pth'), strict=False)
 model.eval()
 
-json_file_path = os.path.abspath('genre_data.json')
+json_file_path = os.path.abspath('../genre_data.json')
 with open(json_file_path, 'r') as genre_json:
     genres = json.load(genre_json)
 genre_names = [genre["name"] for genre in genres["genres"]]
 
 with torch.no_grad():
     songTensor = torch.tensor(songData.values, dtype=torch.float32)
-    
+    print(f"songTensor: {songTensor}")
+
     output = model(songTensor)
+    print(f"Logits before clamping: {output}")
+
     output = torch.clamp(output, min=-20, max=20)
-    print(f"Logits before softmax: {output}")
-    
+    print(f"Logits after clamping: {output}")
+
     probabilities = torch.nn.functional.softmax(output, dim=1, dtype=torch.float32)
     print(f"Probabilities after softmax: {probabilities}")
-    
+
     top3_indices = torch.topk(probabilities, 3).indices.squeeze().tolist()
     top3_genres = [(genre_names[i], probabilities[0, i].item()) for i in top3_indices]
     print(f"Top 3 predicted genres: {top3_genres}")
