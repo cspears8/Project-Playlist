@@ -1,2 +1,2 @@
 # Project-Playlist
-An app which uses neural networks to create playlists for users based on an inputted song and it's qualities.
+An app which constructs a basic multi-layer perceptron to predict the genre of an inputted song using data from AcousticBrainz.
