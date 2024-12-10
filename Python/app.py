@@ -160,7 +160,7 @@ def parse_data(highlevel_data, lowlevel_data, recording):
 
     df = pd.DataFrame(features_list)
 
-    training_features = joblib.load('features.pkl')
+    training_features = joblib.load('../model/features.pkl')
 
     df = df.drop(columns=['mbid', 'genre'])   
     df = flatten_array_columns(df)
@@ -172,7 +172,7 @@ def parse_data(highlevel_data, lowlevel_data, recording):
     df_array = df.to_numpy()
 
     # Apply scaling
-    scaler = joblib.load('scaler.pkl')
+    scaler = joblib.load('../Model/scaler.pkl')
     df_scaled = scaler.transform(df_array)
 
     return pd.DataFrame(df_scaled, columns=training_features)
@@ -201,10 +201,10 @@ songData = getMBID(songName, songArtist)
 print("songData before flatten_array_columns:", songData)
 
 model = GenreNN(454, 512, 50)
-model.load_state_dict(torch.load('GenreClassifier.pth'), strict=False)
+model.load_state_dict(torch.load('../Model/GenreClassifier.pth'), strict=False)
 model.eval()
 
-json_file_path = os.path.abspath('../genre_data.json')
+json_file_path = os.path.abspath('../Data/genre_data.json')
 with open(json_file_path, 'r') as genre_json:
     genres = json.load(genre_json)
 genre_names = [genre["name"] for genre in genres["genres"]]
