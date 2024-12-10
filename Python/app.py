@@ -1,4 +1,4 @@
-from flask import Flask, request, json
+import json
 from startingNN import GenreNN
 from sklearn.preprocessing import MinMaxScaler
 import torch
@@ -8,12 +8,6 @@ import numpy as np
 import pandas as pd
 import os
 import joblib
-
-app = Flask(__name__)
-
-def predict():
-    songName = request.get_json()
-    getMBID(songName)
 
 def getMBID(title, artist):
     try:

@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.metrics import precision_recall_fscore_support
-from imblearn.over_sampling import SMOTE
 
 class GenreNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, dropout_rate=0.5):
