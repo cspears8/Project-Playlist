@@ -71,11 +71,11 @@ def flatten_array_columns(df, length=10):
     
     return df
 
-combined_df = pd.read_csv('combined_data.csv')
+combined_df = pd.read_csv('../Data/combined_data.csv')
 
 training_df = combined_df.drop(columns=['mbid', 'genre'])
 training_features = list(training_df.columns)
-joblib.dump(training_features, 'features.pkl')
+joblib.dump(training_features, '../Model/features.pkl')
 
 label_encoder = LabelEncoder()
 combined_df["genre"] = label_encoder.fit_transform(combined_df['genre'])
@@ -105,7 +105,7 @@ scaler = StandardScaler()
 X_train_res = scaler.fit_transform(X_train)
 X_val = scaler.fit_transform(X_val)
 X_test = scaler.fit_transform(X_test)
-joblib.dump(scaler, 'scaler.pkl')
+joblib.dump(scaler, '../Model/scaler.pkl')
 
 # Flatten resampled training data into tensors
 X_train_tensor = torch.tensor(X_train_res, dtype=torch.float32)
@@ -280,4 +280,4 @@ print(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_accuracy:.4f}")
 
 # Detailed classification report
 print(classification_report(all_test_labels, all_test_predictions, zero_division=0))
-torch.save(model.state_dict(), "GenreClassifier.pth")
+torch.save(model.state_dict(), "../Model/GenreClassifier.pth")
